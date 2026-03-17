@@ -1,0 +1,17 @@
+{
+    "name": "My Cloud Service",
+    "short_name": "My Cloud",
+    "description": "Premium cloud file storage workspace with Supabase uploads, previews, and file management.",
+    "start_url": "./",
+    "display": "standalone",
+    "background_color": "#071521",
+    "theme_color": "#071521",
+    "icons": [
+        {
+            "src": "./icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}

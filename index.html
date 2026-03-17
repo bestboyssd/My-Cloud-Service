@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Premium cloud file storage with liquid glass UI, responsive uploads, and Supabase-powered media management.">
+    <meta name="theme-color" content="#071521">
+    <title>My Cloud Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="script.js" defer></script>
+</head>
+<body data-theme="dark">
+    <div class="ambient-scene" aria-hidden="true">
+        <span class="ambient-orb ambient-orb--one"></span>
+        <span class="ambient-orb ambient-orb--two"></span>
+        <span class="ambient-orb ambient-orb--three"></span>
+        <span class="ambient-grid"></span>
+    </div>
+
+    <div id="message" class="toast" hidden aria-live="polite"></div>
+
+    <div class="app-shell">
+        <header class="hero glass-panel tilt-panel reveal-on-scroll">
+            <div class="hero__brand">
+                <div class="brand-mark" aria-hidden="true">
+                    <img src="icon.svg" alt="">
+                </div>
+                <div class="brand-copy">
+                    <span class="eyebrow">Liquid cloud workspace</span>
+                    <h1>My Cloud Service</h1>
+                    <p>Upload images and videos to Supabase storage with a premium glass interface, real-time progress, instant previews, and polished management tools.</p>
+                </div>
+            </div>
+
+            <div class="hero__actions">
+                <button id="themeToggle" class="button ghost" type="button">Light Mode</button>
+                <button id="settingsBtn" class="button secondary" type="button">Settings</button>
+                <button id="refreshBtn" class="button ghost" type="button">Refresh</button>
+            </div>
+
+            <div class="hero__metrics">
+                <article class="metric-card reveal-on-scroll">
+                    <span class="metric-card__label">Queued</span>
+                    <strong id="queueMetric">0 files</strong>
+                    <p>Review and reorder before upload.</p>
+                </article>
+                <article class="metric-card reveal-on-scroll">
+                    <span class="metric-card__label">Library</span>
+                    <strong id="libraryMetric">0 files</strong>
+                    <p>Search, filter, and bulk-manage stored media.</p>
+                </article>
+                <article class="metric-card reveal-on-scroll">
+                    <span class="metric-card__label">Usage</span>
+                    <strong id="usageMetric">0 B</strong>
+                    <p>Live estimate against your configured quota.</p>
+                </article>
+            </div>
+        </header>
+
+        <main class="dashboard">
+            <section class="upload-layout">
+                <article class="upload-card glass-panel tilt-panel reveal-on-scroll">
+                    <div class="card-heading">
+                        <div>
+                            <span class="eyebrow">Upload zone</span>
+                            <h2>Drag, drop, and stage files</h2>
+                        </div>
+                        <p class="surface-note">Anonymous uploads to the public <code>files</code> bucket.</p>
+                    </div>
+
+                    <label id="uploadArea" class="upload-dropzone" for="fileInput">
+                        <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
+                        <div class="dropzone__halo"></div>
+                        <div class="dropzone__content">
+                            <div class="dropzone__badge" aria-hidden="true">
+                                <img src="upload-orb.svg" class="dropzone__icon" alt="">
+                            </div>
+                            <h3>Drop files anywhere here</h3>
+                            <p>or use the file picker to build a curated upload queue</p>
+                            <div class="dropzone__hints">
+                                <span>Images and videos</span>
+                                <span>Responsive on desktop and mobile</span>
+                                <span>Real-time progress and ETA</span>
+                            </div>
+                        </div>
+                    </label>
+
+                    <div class="upload-actions">
+                        <button id="browseBtn" class="button primary" type="button">Choose Files</button>
+                        <button id="clearQueueBtn" class="button ghost" type="button" disabled>Clear Queue</button>
+                        <button id="uploadSelectedBtn" class="button secondary" type="button" disabled>Upload Selected</button>
+                    </div>
+
+                    <p id="uploadHint" class="hint-line" hidden aria-hidden="true"></p>
+                </article>
+
+                <aside class="queue-card glass-panel reveal-on-scroll">
+                    <div class="card-heading">
+                        <div>
+                            <span class="eyebrow">Queue</span>
+                            <h2>File preview and selection</h2>
+                        </div>
+                        <div class="inline-actions">
+                            <button id="selectAllBtn" class="button ghost compact" type="button">Select All</button>
+                            <button id="deselectAllBtn" class="button ghost compact" type="button">Clear Selection</button>
+                        </div>
+                    </div>
+
+                    <div class="queue-summary">
+                        <span id="queueSummary">No files staged yet.</span>
+                        <span id="selectionSummary">0 selected</span>
+                    </div>
+
+                    <div id="previewList" class="preview-list" aria-live="polite"></div>
+                </aside>
+            </section>
+
+            <section id="progressSection" class="progress-card glass-panel reveal-on-scroll" hidden>
+                <div class="card-heading">
+                    <div>
+                        <span class="eyebrow">Transfer telemetry</span>
+                        <h2>Upload progress</h2>
+                    </div>
+                    <p id="progressPercent" class="surface-note">0%</p>
+                </div>
+
+                <div class="progress-bar" aria-hidden="true">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+
+                <div class="progress-meta">
+                    <span id="progressText">Waiting for uploads</span>
+                    <span id="speedText">Speed: --</span>
+                    <span id="etaText">ETA: --</span>
+                </div>
+            </section>
+
+            <section class="library-section glass-panel reveal-on-scroll">
+                <div class="library-header">
+                    <div>
+                        <span class="eyebrow">Cloud library</span>
+                        <h2>Your uploaded files</h2>
+                        <p class="surface-note">Browse stored media, filter the view, and run bulk operations without leaving the page.</p>
+                    </div>
+
+                    <div class="inline-actions">
+                        <button id="loadFilesBtn" class="button primary" type="button">Load Library</button>
+                        <button id="statsBtn" class="button secondary" type="button">Statistics</button>
+                        <button id="exportBtn" class="button ghost" type="button">Export List</button>
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <label class="field">
+                        <span>Search</span>
+                        <input id="searchInput" type="search" placeholder="Search by file name">
+                    </label>
+
+                    <label class="field">
+                        <span>Sort</span>
+                        <select id="sortSelect">
+                            <option value="created_at">Newest first</option>
+                            <option value="name">Name</option>
+                            <option value="size">Size</option>
+                        </select>
+                    </label>
+
+                    <label class="field">
+                        <span>Filter</span>
+                        <select id="filterSelect">
+                            <option value="all">All files</option>
+                            <option value="image">Images</option>
+                            <option value="video">Videos</option>
+                        </select>
+                    </label>
+
+                    <div class="toolbar__actions">
+                        <button id="toggleViewBtn" class="button ghost" type="button">List View</button>
+                        <button id="selectVisibleBtn" class="button ghost" type="button">Select Visible</button>
+                    </div>
+                </div>
+
+                <div id="bulkActions" class="selection-toolbar" hidden>
+                    <span id="bulkCount">0 selected</span>
+                    <button id="shareSelectedBtn" class="button secondary compact" type="button">Copy Links</button>
+                    <button id="downloadSelectedBtn" class="button ghost compact" type="button">Download</button>
+                    <button id="deleteSelectedBtn" class="button danger compact" type="button">Delete</button>
+                </div>
+
+                <div class="files-meta">
+                    <span id="filesCountLabel">Library not loaded</span>
+                    <span id="storageUsageLabel">Usage: 0 B</span>
+                </div>
+
+                <div id="filesList" class="files-list grid-view" aria-live="polite"></div>
+                <div id="loadMoreSentinel" class="load-more" hidden>Scroll to load more files</div>
+            </section>
+        </main>
+    </div>
+
+    <section id="settingsModal" class="modal settings-modal" hidden aria-labelledby="settingsTitle" aria-modal="true" role="dialog">
+        <div class="modal__backdrop" data-close-modal></div>
+        <div class="modal__panel glass-panel settings-panel">
+            <div class="modal__header">
+                <div>
+                    <span class="eyebrow">Preferences</span>
+                    <h2 id="settingsTitle">Settings</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-modal aria-label="Close settings">Close</button>
+            </div>
+
+            <div class="modal__body settings-layout">
+                <section class="settings-hero-card">
+                    <div>
+                        <span class="eyebrow">Workspace tuning</span>
+                        <h3>Shape the upload experience</h3>
+                        <p>Control automation, file limits, and motion with cleaner locally saved preferences.</p>
+                    </div>
+                    <div class="settings-hero-card__badge">
+                        <strong>Local only</strong>
+                        <span>Saved in this browser</span>
+                    </div>
+                </section>
+
+                <div class="settings-grid">
+                    <label class="settings-card settings-card--toggle" for="autoLoad">
+                        <div class="settings-card__copy">
+                            <span class="settings-card__eyebrow">Automation</span>
+                            <strong>Auto-load library</strong>
+                            <small>Refresh the library automatically after successful uploads.</small>
+                        </div>
+                        <span class="switch">
+                            <input id="autoLoad" class="switch__input" type="checkbox">
+                            <span class="switch__track">
+                                <span class="switch__thumb"></span>
+                            </span>
+                        </span>
+                    </label>
+
+                    <label class="settings-card settings-card--field" for="maxFileSize">
+                        <div class="settings-card__copy">
+                            <span class="settings-card__eyebrow">Capacity</span>
+                            <strong>Maximum file size</strong>
+                            <small>Choose the largest file you want to accept in the queue.</small>
+                        </div>
+                        <div class="settings-card__input">
+                            <input id="maxFileSize" type="number" min="1" max="2048" step="1">
+                            <span>MB</span>
+                        </div>
+                    </label>
+
+                    <label class="settings-card settings-card--toggle" for="compression">
+                        <div class="settings-card__copy">
+                            <span class="settings-card__eyebrow">Efficiency</span>
+                            <strong>Image compression</strong>
+                            <small>Downscale and compress staged images before upload when possible.</small>
+                        </div>
+                        <span class="switch">
+                            <input id="compression" class="switch__input" type="checkbox">
+                            <span class="switch__track">
+                                <span class="switch__thumb"></span>
+                            </span>
+                        </span>
+                    </label>
+
+                    <label class="settings-card settings-card--toggle" for="reduceMotion">
+                        <div class="settings-card__copy">
+                            <span class="settings-card__eyebrow">Motion</span>
+                            <strong>Reduced motion</strong>
+                            <small>Keep the glass look while toning down floating animations and motion depth.</small>
+                        </div>
+                        <span class="switch">
+                            <input id="reduceMotion" class="switch__input" type="checkbox">
+                            <span class="switch__track">
+                                <span class="switch__thumb"></span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
+
+                <section class="shortcut-panel">
+                    <div class="shortcut-panel__header">
+                        <div>
+                            <span class="settings-card__eyebrow">Quick actions</span>
+                            <strong>Keyboard shortcuts</strong>
+                        </div>
+                        <p>Move around the workspace faster.</p>
+                    </div>
+                    <div class="shortcut-grid">
+                        <div class="shortcut-chip"><kbd>Ctrl</kbd><span>+</span><kbd>U</kbd><small>Open file picker</small></div>
+                        <div class="shortcut-chip"><kbd>Ctrl</kbd><span>+</span><kbd>S</kbd><small>Load library</small></div>
+                        <div class="shortcut-chip"><kbd>Ctrl</kbd><span>+</span><kbd>D</kbd><small>Toggle theme</small></div>
+                        <div class="shortcut-chip"><kbd>Ctrl</kbd><span>+</span><kbd>F</kbd><small>Focus search</small></div>
+                        <div class="shortcut-chip"><kbd>Esc</kbd><small>Close open dialogs</small></div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="modal__footer settings-footer">
+                <p class="settings-footer__note">Changes save locally and apply as soon as you press save.</p>
+                <button id="saveSettingsBtn" class="button primary" type="button">Save Settings</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="fileInfoModal" class="modal" hidden aria-labelledby="fileInfoTitle" aria-modal="true" role="dialog">
+        <div class="modal__backdrop" data-close-modal></div>
+        <div class="modal__panel glass-panel">
+            <div class="modal__header">
+                <div>
+                    <span class="eyebrow">Metadata</span>
+                    <h2 id="fileInfoTitle">File information</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-modal aria-label="Close file information">Close</button>
+            </div>
+            <div id="fileInfoContent" class="modal__body"></div>
+        </div>
+    </section>
+
+    <section id="statsModal" class="modal" hidden aria-labelledby="statsTitle" aria-modal="true" role="dialog">
+        <div class="modal__backdrop" data-close-modal></div>
+        <div class="modal__panel glass-panel">
+            <div class="modal__header">
+                <div>
+                    <span class="eyebrow">Overview</span>
+                    <h2 id="statsTitle">Storage statistics</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-modal aria-label="Close statistics">Close</button>
+            </div>
+            <div id="statsContent" class="modal__body"></div>
+        </div>
+    </section>
+
+    <section id="renameModal" class="modal" hidden aria-labelledby="renameTitle" aria-modal="true" role="dialog">
+        <div class="modal__backdrop" data-close-modal></div>
+        <div class="modal__panel glass-panel">
+            <div class="modal__header">
+                <div>
+                    <span class="eyebrow">Library Action</span>
+                    <h2 id="renameTitle">Rename file</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-modal aria-label="Close rename dialog">Close</button>
+            </div>
+            <div class="modal__body modal-grid">
+                <div class="info-item">
+                    <strong>Current file</strong>
+                    <span id="renameCurrentName">-</span>
+                </div>
+                <label class="field field--stacked" for="renameInput">
+                    <span>New file name</span>
+                    <input id="renameInput" type="text" placeholder="Enter a new name">
+                </label>
+                <p class="surface-note">The original file extension will be preserved automatically.</p>
+            </div>
+            <div class="modal__footer">
+                <button id="renameSubmitBtn" class="button primary" type="button">Save Name</button>
+            </div>
+        </div>
+    </section>
+
+    <noscript>
+        <div class="noscript-banner">JavaScript is required to use uploads, previews, and Supabase storage features.</div>
+    </noscript>
+</body>
+</html>
