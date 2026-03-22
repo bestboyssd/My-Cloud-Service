@@ -76,6 +76,27 @@ const elements = {
     fileInfoContent: $("fileInfoContent"),
     statsModal: $("statsModal"),
     statsContent: $("statsContent"),
+    viewerModal: $("viewerModal"),
+    viewerPanel: $("viewerPanel"),
+    viewerStage: $("viewerStage"),
+    viewerKindPill: $("viewerKindPill"),
+    viewerName: $("viewerName"),
+    viewerMeta: $("viewerMeta"),
+    viewerNote: $("viewerNote"),
+    viewerShareBtn: $("viewerShareBtn"),
+    viewerDownloadBtn: $("viewerDownloadBtn"),
+    viewerInfoBtn: $("viewerInfoBtn"),
+    fileActionModal: $("fileActionModal"),
+    actionThumb: $("actionThumb"),
+    actionName: $("actionName"),
+    actionMeta: $("actionMeta"),
+    actionPreviewBtn: $("actionPreviewBtn"),
+    actionSelectBtn: $("actionSelectBtn"),
+    actionInfoBtn: $("actionInfoBtn"),
+    actionRenameBtn: $("actionRenameBtn"),
+    actionShareBtn: $("actionShareBtn"),
+    actionDownloadBtn: $("actionDownloadBtn"),
+    actionDeleteBtn: $("actionDeleteBtn"),
     renameModal: $("renameModal"),
     renameCurrentName: $("renameCurrentName"),
     renameInput: $("renameInput"),
@@ -102,7 +123,11 @@ const state = {
     messageTimer: null,
     observer: null,
     revealObserver: null,
-    renameTarget: null
+    renameTarget: null,
+    viewerTarget: null,
+    viewerObjectUrl: null,
+    viewerLoadToken: 0,
+    actionTarget: null
 };
 
 init();
@@ -149,6 +174,52 @@ function bindEvents() {
     elements.themeToggle.addEventListener("click", () => applyTheme(state.theme === "dark" ? "light" : "dark", true));
     elements.settingsBtn.addEventListener("click", () => openModal(elements.settingsModal));
     elements.saveSettingsBtn.addEventListener("click", saveSettings);
+    elements.viewerShareBtn.addEventListener("click", () => state.viewerTarget && copyPublicLinks([state.viewerTarget]));
+    elements.viewerDownloadBtn.addEventListener("click", () => state.viewerTarget && downloadFile(state.viewerTarget).catch((error) => showMessage(`Download failed: ${error.message}`, "error")));
+    elements.viewerInfoBtn.addEventListener("click", () => {
+        const fileName = state.viewerTarget;
+        if (!fileName) return;
+        closeModal(elements.viewerModal);
+        showFileInfo(fileName);
+    });
+    elements.actionPreviewBtn.addEventListener("click", () => {
+        const fileName = state.actionTarget;
+        if (!fileName) return;
+        closeModal(elements.fileActionModal);
+        openMediaViewer(fileName);
+    });
+    elements.actionSelectBtn.addEventListener("click", () => {
+        const fileName = state.actionTarget;
+        if (!fileName) return;
+        const willSelect = !state.selectedUploaded.has(fileName);
+        if (willSelect) state.selectedUploaded.add(fileName);
+        else state.selectedUploaded.delete(fileName);
+        renderLibrary();
+        openFileActions(fileName);
+        showMessage(willSelect ? "Added to selection." : "Removed from selection.", "success", 1600);
+    });
+    elements.actionInfoBtn.addEventListener("click", () => {
+        const fileName = state.actionTarget;
+        if (!fileName) return;
+        closeModal(elements.fileActionModal);
+        if (!elements.viewerModal.hidden) closeModal(elements.viewerModal);
+        showFileInfo(fileName);
+    });
+    elements.actionRenameBtn.addEventListener("click", () => {
+        const fileName = state.actionTarget;
+        if (!fileName) return;
+        closeModal(elements.fileActionModal);
+        openRenameModal(fileName);
+    });
+    elements.actionShareBtn.addEventListener("click", () => state.actionTarget && copyPublicLinks([state.actionTarget]));
+    elements.actionDownloadBtn.addEventListener("click", () => state.actionTarget && downloadFile(state.actionTarget).catch((error) => showMessage(`Download failed: ${error.message}`, "error")));
+    elements.actionDeleteBtn.addEventListener("click", async () => {
+        const fileName = state.actionTarget;
+        if (!fileName) return;
+        if (!window.confirm(`Delete ${getDisplayName(fileName)}?`)) return;
+        closeModal(elements.fileActionModal);
+        await deleteFiles([fileName]);
+    });
     elements.renameSubmitBtn.addEventListener("click", submitRename);
     elements.renameInput.addEventListener("keydown", (event) => {
         if (event.key !== "Enter") return;
@@ -178,7 +249,7 @@ function bindEvents() {
     elements.previewList.addEventListener("drop", handlePreviewDrop);
     elements.previewList.addEventListener("dragend", handlePreviewDragEnd);
     elements.filesList.addEventListener("click", handleFilesListClick);
-    elements.filesList.addEventListener("change", handleFilesListChange);
+    elements.filesList.addEventListener("contextmenu", handleFilesListContextMenu);
     document.querySelectorAll("[data-close-modal]").forEach((node) => node.addEventListener("click", closeAllModals));
     document.addEventListener("keydown", handleKeyboardShortcuts);
     window.addEventListener("beforeunload", revokeAllPreviewUrls);
@@ -237,7 +308,7 @@ function applyView(view, persist = true) {
     state.currentView = view === "list" ? "list" : "grid";
     elements.filesList.classList.remove("grid-view", "list-view");
     elements.filesList.classList.add(`${state.currentView}-view`);
-    elements.toggleViewBtn.textContent = state.currentView === "grid" ? "List View" : "Grid View";
+    elements.toggleViewBtn.textContent = state.currentView === "grid" ? "Large Tiles" : "Compact Tiles";
     if (persist) localStorage.setItem(STORAGE_KEYS.view, state.currentView);
 }
 
@@ -579,7 +650,7 @@ function renderLibrary() {
         return updateMetrics();
     }
     const visible = state.filteredFiles.slice(0, state.visibleCount);
-    elements.filesList.innerHTML = visible.map(buildFileCardMarkup).join("");
+    elements.filesList.innerHTML = visible.map((file, index) => buildFileCardMarkup(file, index)).join("");
     elements.filesCountLabel.textContent = `Showing ${visible.length} of ${state.filteredFiles.length} file(s)`;
     elements.storageUsageLabel.textContent = `Usage: ${formatBytes(getTotalLibrarySize())} / ${formatBytes(CONFIG.storageQuotaBytes)}`;
     elements.loadMoreSentinel.hidden = visible.length >= state.filteredFiles.length;
@@ -589,55 +660,76 @@ function renderLibrary() {
     updateMetrics();
 }
 
-function buildFileCardMarkup(file) {
+function buildFileCardMarkup(file, index = 0) {
     const name = escapeHtml(file.name);
     const display = escapeHtml(getDisplayName(file.name));
     const kind = getFileKind(file);
     const url = getPublicUrl(file.name);
     const selected = state.selectedUploaded.has(file.name);
+    const mediaPriority = index < 6 ? 'loading="eager" fetchpriority="high" decoding="async"' : 'loading="lazy" fetchpriority="low" decoding="async"';
+    const kindLabel = kind === "image" ? "Image" : kind === "video" ? "Video" : "File";
+    const selectedBadge = selected ? `<span class="file-card__selected-pill">Selected</span>` : "";
     const media = kind === "image"
-        ? `<img src="${url}" alt="${display}" loading="lazy">`
+        ? `<img src="${url}" alt="${display}" ${mediaPriority}>`
         : kind === "video"
-            ? `<video src="${url}" controls preload="metadata"></video>`
+            ? `<video src="${url}" muted playsinline preload="metadata"></video>`
             : `<div class="icon-asset">FILE</div>`;
-    const note = kind === "image" ? "Image preview ready" : kind === "video" ? "Video preview ready" : "Public file";
     return `
-        <article class="file-card reveal-on-scroll ${selected ? "is-selected" : ""}" data-name="${name}">
-            <div class="file-card__top">
-                <label class="checkbox-pill">
-                    <input class="file-card__check" type="checkbox" data-name="${name}" ${selected ? "checked" : ""}>
-                    <span>Select</span>
-                </label>
-                <span class="file-pill">${kind === "image" ? "Image" : kind === "video" ? "Video" : "File"}</span>
-            </div>
-            <div class="file-card__media">${media}</div>
-            <div class="file-card__body">
-                <div>
+        <article class="file-card file-card--${kind} reveal-on-scroll ${selected ? "is-selected" : ""}" data-name="${name}">
+            <button class="file-card__viewer" type="button" data-action="open" data-name="${name}" aria-label="Open ${display}">
+                <div class="file-card__media">
+                    ${media}
+                    ${selectedBadge}
+                </div>
+                <div class="file-card__body">
                     <h3 title="${display}">${display}</h3>
-                    <p class="file-card__meta">${formatBytes(getFileSize(file))} - ${formatDate(file.created_at || file.updated_at)}</p>
+                    <p class="file-card__meta">${kindLabel} - ${formatGalleryDate(file.created_at || file.updated_at)} - ${formatBytes(getFileSize(file))}</p>
                 </div>
-                <p class="file-card__note">${note}</p>
-                <div class="file-card__actions">
-                    <button class="button ghost compact" type="button" data-action="info" data-name="${name}">Info</button>
-                    <button class="button ghost compact" type="button" data-action="rename" data-name="${name}">Rename</button>
-                    <button class="button ghost compact" type="button" data-action="download" data-name="${name}">Download</button>
-                    <button class="button secondary compact" type="button" data-action="share" data-name="${name}">Share</button>
-                    <button class="button danger compact" type="button" data-action="delete" data-name="${name}">Delete</button>
-                </div>
-            </div>
+            </button>
         </article>
     `;
 }
 
 function handleFilesListClick(event) {
     const action = event.target.closest("[data-action]");
-    if (!action?.dataset.name) return;
-    const name = action.dataset.name;
-    if (action.dataset.action === "info") return showFileInfo(name);
-    if (action.dataset.action === "rename") return openRenameModal(name);
-    if (action.dataset.action === "share") return copyPublicLinks([name]);
-    if (action.dataset.action === "download") return downloadFile(name).catch((error) => showMessage(`Download failed: ${error.message}`, "error"));
-    if (action.dataset.action === "delete" && window.confirm(`Delete ${getDisplayName(name)}?`)) deleteFiles([name]);
+    if (action?.dataset.name) {
+        const name = action.dataset.name;
+        if (action.dataset.action === "open") return openMediaViewer(name);
+        return;
+    }
+
+    const card = event.target.closest(".file-card");
+    if (card?.dataset.name && !event.target.closest("button, a")) {
+        openMediaViewer(card.dataset.name);
+    }
+}
+
+function handleFilesListContextMenu(event) {
+    const card = event.target.closest(".file-card");
+    if (!card?.dataset.name) return;
+    event.preventDefault();
+    openFileActions(card.dataset.name);
+}
+
+function openFileActions(fileName) {
+    const file = state.files.find((entry) => entry.name === fileName);
+    if (!file) return showMessage("That file is no longer available in the current library view.", "error");
+    const display = getDisplayName(file.name);
+    const kind = getFileKind(file);
+    const url = getPublicUrl(file.name);
+    const kindLabel = kind === "image" ? "Image" : kind === "video" ? "Video" : "File";
+    const thumb = kind === "image"
+        ? `<img src="${url}" alt="${escapeHtml(display)}" loading="eager" decoding="async" fetchpriority="high">`
+        : kind === "video"
+            ? `<video src="${url}" muted playsinline preload="metadata"></video>`
+            : `<div class="icon-asset">FILE</div>`;
+
+    state.actionTarget = file.name;
+    elements.actionThumb.innerHTML = thumb;
+    elements.actionName.textContent = display;
+    elements.actionMeta.textContent = `${kindLabel} - ${formatBytes(getFileSize(file))} - ${formatDate(file.created_at || file.updated_at)}${state.selectedUploaded.has(file.name) ? " - Selected" : ""}`;
+    syncActionSelection(file.name);
+    openModal(elements.fileActionModal);
 }
 
 function handleFilesListChange(event) {
@@ -754,13 +846,7 @@ function showFileInfo(fileName) {
     const display = escapeHtml(getDisplayName(file.name));
     const url = getPublicUrl(file.name);
     const kind = getFileKind(file);
-    const preview = kind === "image"
-        ? `<div class="preview-card__media"><img src="${url}" alt="${display}" loading="lazy"></div>`
-        : kind === "video"
-            ? `<div class="preview-card__media"><video src="${url}" controls preload="metadata"></video></div>`
-            : `<div class="preview-card__media"><div class="icon-asset">FILE</div></div>`;
     elements.fileInfoContent.innerHTML = `
-        ${preview}
         <div class="info-list">
             <div class="info-item"><strong>Name</strong><span>${display}</span></div>
             <div class="info-item"><strong>Stored Path</strong><span>${escapeHtml(file.name)}</span></div>
@@ -771,6 +857,285 @@ function showFileInfo(fileName) {
         </div>
     `;
     openModal(elements.fileInfoModal);
+}
+
+function openMediaViewer(fileName) {
+    const file = state.files.find((entry) => entry.name === fileName);
+    if (!file) return showMessage("That file is no longer available in the current library view.", "error");
+
+    const display = getDisplayName(file.name);
+    const kind = getFileKind(file);
+    const url = getPublicUrl(file.name);
+
+    state.viewerTarget = file.name;
+    state.viewerLoadToken += 1;
+    revokeViewerObjectUrl();
+    applyViewerShellFormat(null);
+    elements.viewerKindPill.textContent = kind === "image" ? "Image" : kind === "video" ? "Video" : "File";
+    elements.viewerName.textContent = display;
+    elements.viewerMeta.textContent = `${formatBytes(getFileSize(file))} - ${formatDate(file.created_at || file.updated_at)}`;
+    elements.viewerNote.textContent = kind === "video"
+        ? "Preparing smoother playback for this video..."
+        : kind === "image"
+            ? "Opening full-frame image preview."
+            : "Open the public file link from the information panel if you need more actions.";
+    openModal(elements.viewerModal);
+
+    if (kind === "image") {
+        elements.viewerStage.innerHTML = `
+            <div class="viewer-stage__frame is-image">
+                <img src="${url}" alt="${escapeHtml(display)}" loading="eager" decoding="async" fetchpriority="high">
+            </div>
+        `;
+        const image = elements.viewerStage.querySelector("img");
+        if (image) attachViewerFormat(image, "image");
+        return;
+    }
+
+    if (kind === "video") {
+        elements.viewerStage.innerHTML = `
+            <div class="viewer-stage__frame is-video viewer-stage__loading">
+                <div class="viewer-loader" aria-hidden="true"></div>
+                <strong>Optimizing playback</strong>
+                <p>Loading the first 10 seconds before playback starts.</p>
+            </div>
+        `;
+        hydrateViewerVideo(file, url, display, state.viewerLoadToken);
+        return;
+    }
+
+    elements.viewerStage.innerHTML = `<div class="viewer-stage__fallback"><div class="icon-asset">FILE</div><p>Preview is not available for this file type.</p></div>`;
+}
+
+async function hydrateViewerVideo(file, url, display, loadToken) {
+    const assignVideo = async (sourceUrl) => {
+        if (loadToken !== state.viewerLoadToken || state.viewerTarget !== file.name) return;
+        const viewerVideo = document.createElement("video");
+        viewerVideo.src = sourceUrl;
+        viewerVideo.controls = true;
+        viewerVideo.playsInline = true;
+        viewerVideo.preload = "auto";
+        viewerVideo.setAttribute("controlslist", "nodownload");
+        viewerVideo.style.display = "none";
+        elements.viewerStage.querySelector(".viewer-stage__frame")?.appendChild(viewerVideo);
+
+        const startupReady = await waitForViewerBuffer(viewerVideo, {
+            fileName: file.name,
+            loadToken,
+            seconds: 10,
+            mode: "startup"
+        });
+        if (!startupReady || loadToken !== state.viewerLoadToken || state.viewerTarget !== file.name) return;
+
+        elements.viewerStage.innerHTML = `<div class="viewer-stage__frame is-video"></div>`;
+        const frame = elements.viewerStage.querySelector(".viewer-stage__frame");
+        if (!frame) return;
+        viewerVideo.style.display = "";
+        frame.appendChild(viewerVideo);
+        attachViewerFormat(viewerVideo, "video");
+        elements.viewerNote.textContent = "First 10 seconds buffered. Starting playback.";
+        monitorViewerPlaybackBuffer(viewerVideo, loadToken, file.name);
+
+        try {
+            await viewerVideo.play();
+        } catch {
+            elements.viewerNote.textContent = "First 10 seconds buffered. Tap play if autoplay is blocked.";
+        }
+    };
+
+    try {
+        await assignVideo(url);
+    } catch (error) {
+        console.error(error);
+        if (loadToken !== state.viewerLoadToken || state.viewerTarget !== file.name) return;
+        elements.viewerStage.innerHTML = `
+            <div class="viewer-stage__frame is-video">
+                <video src="${url}" controls playsinline preload="auto" controlslist="nodownload"></video>
+            </div>
+        `;
+        const viewerVideo = elements.viewerStage.querySelector("video");
+        if (!viewerVideo) return;
+        attachViewerFormat(viewerVideo, "video");
+        elements.viewerNote.textContent = "Using direct playback because optimized buffering was unavailable.";
+    }
+}
+
+function attachViewerFormat(media, kind) {
+    const applyFormat = () => {
+        const width = kind === "video" ? media.videoWidth : media.naturalWidth;
+        const height = kind === "video" ? media.videoHeight : media.naturalHeight;
+        const frame = elements.viewerStage.querySelector(".viewer-stage__frame");
+        if (!frame || !width || !height) return;
+
+        frame.classList.remove("is-portrait", "is-square", "is-landscape");
+        const ratio = width / height;
+        const format = ratio < 0.88 ? "portrait" : ratio > 1.12 ? "landscape" : "square";
+        frame.classList.add(`is-${format}`);
+        applyViewerShellFormat(format);
+        elements.viewerStage.style.setProperty("--viewer-media-ratio", `${width} / ${height}`);
+        elements.viewerStage.style.setProperty("--viewer-media-width", `${width}`);
+        elements.viewerStage.style.setProperty("--viewer-media-height", `${height}`);
+        frame.style.setProperty("--viewer-media-ratio", `${width} / ${height}`);
+        frame.style.setProperty("--viewer-media-width", `${width}`);
+        frame.style.setProperty("--viewer-media-height", `${height}`);
+        setViewerFormatNote(kind, format);
+    };
+
+    if (kind === "video") {
+        if (media.readyState >= 1) applyFormat();
+        else media.addEventListener("loadedmetadata", applyFormat, { once: true });
+        return;
+    }
+
+    if (media.complete) applyFormat();
+    else media.addEventListener("load", applyFormat, { once: true });
+}
+
+function applyViewerShellFormat(format) {
+    if (!elements.viewerPanel) return;
+    elements.viewerPanel.classList.remove("is-portrait", "is-square", "is-landscape");
+    if (format) elements.viewerPanel.classList.add(`is-${format}`);
+}
+
+function setViewerFormatNote(kind, format, tail = "") {
+    const base = kind === "video"
+        ? format === "portrait"
+            ? "Portrait video shown in a tall viewer layout."
+            : format === "square"
+                ? "Square video shown in a balanced centered viewer."
+                : "Landscape video shown in a wide viewer layout."
+        : format === "portrait"
+            ? "Portrait image shown in a tall viewer layout."
+            : format === "square"
+                ? "Square image shown in a balanced centered viewer."
+                : "Landscape image shown in a wide viewer layout.";
+    elements.viewerNote.textContent = tail ? `${base} ${tail}` : base;
+}
+
+function getBufferedRangeAt(video, time = video.currentTime) {
+    for (let index = 0; index < video.buffered.length; index += 1) {
+        const start = video.buffered.start(index);
+        const end = video.buffered.end(index);
+        if (time >= start - 0.2 && time <= end + 0.2) return { start, end };
+    }
+    return null;
+}
+
+function getBufferedAhead(video, time = video.currentTime) {
+    const range = getBufferedRangeAt(video, time);
+    if (!range) return 0;
+    return Math.max(0, range.end - time);
+}
+
+function hasBidirectionalBuffer(video, seconds = 10) {
+    const time = video.currentTime;
+    const range = getBufferedRangeAt(video, time);
+    if (!range) return false;
+    const neededBack = Math.min(seconds, Math.max(0, time));
+    const remaining = Number.isFinite(video.duration) ? Math.max(0, video.duration - time) : seconds;
+    const neededAhead = Math.min(seconds, remaining);
+    return range.start <= time - neededBack + 0.35 && range.end >= time + neededAhead - 0.35;
+}
+
+function waitForViewerBuffer(video, { fileName, loadToken, seconds = 10, mode = "startup" }) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const isActive = () => loadToken === state.viewerLoadToken && state.viewerTarget === fileName;
+
+        const cleanup = () => {
+            video.removeEventListener("loadedmetadata", checkReady);
+            video.removeEventListener("progress", checkReady);
+            video.removeEventListener("canplay", checkReady);
+            video.removeEventListener("canplaythrough", checkReady);
+            video.removeEventListener("error", fail);
+            window.clearTimeout(timeoutId);
+        };
+
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(result);
+        };
+
+        const fail = (event) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(event instanceof Error ? event : new Error("Video buffering failed."));
+        };
+
+        const checkReady = () => {
+            if (!isActive()) return finish(false);
+            if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+
+            if (mode === "startup") {
+                const target = Math.min(seconds, video.duration);
+                if (getBufferedAhead(video, 0) >= target - 0.35) finish(true);
+                return;
+            }
+
+            if (hasBidirectionalBuffer(video, seconds)) finish(true);
+        };
+
+        const timeoutId = window.setTimeout(() => finish(true), 18000);
+        video.addEventListener("loadedmetadata", checkReady);
+        video.addEventListener("progress", checkReady);
+        video.addEventListener("canplay", checkReady);
+        video.addEventListener("canplaythrough", checkReady);
+        video.addEventListener("error", fail);
+        video.load();
+        checkReady();
+    });
+}
+
+function monitorViewerPlaybackBuffer(video, loadToken, fileName) {
+    let rebuffering = false;
+
+    const maybeRebuffer = async () => {
+        if (rebuffering) return;
+        if (loadToken !== state.viewerLoadToken || state.viewerTarget !== fileName) return;
+        if (video.ended || video.seeking) return;
+        if (getBufferedAhead(video) >= 10 || !Number.isFinite(video.duration)) return;
+
+        rebuffering = true;
+        const shouldResume = !video.paused;
+        video.pause();
+        const frame = elements.viewerStage.querySelector(".viewer-stage__frame");
+        if (frame) frame.classList.add("is-rebuffering");
+        const range = getBufferedRangeAt(video, video.currentTime);
+        const backwardReady = !!range && range.start <= Math.max(0, video.currentTime - 10) + 0.35;
+        elements.viewerNote.textContent = backwardReady
+            ? "Rebuffering to keep about 10 seconds ahead."
+            : "Rebuffering to keep about 10 seconds around the playhead.";
+
+        const ready = await waitForViewerBuffer(video, {
+            fileName,
+            loadToken,
+            seconds: 10,
+            mode: "playback"
+        });
+
+        rebuffering = false;
+        if (frame) frame.classList.remove("is-rebuffering");
+        if (!ready || loadToken !== state.viewerLoadToken || state.viewerTarget !== fileName) return;
+        const currentFormat = frame?.classList.contains("is-portrait")
+            ? "portrait"
+            : frame?.classList.contains("is-square")
+                ? "square"
+                : "landscape";
+        setViewerFormatNote("video", currentFormat, "Buffered about 10 seconds ahead for smoother playback.");
+        if (shouldResume) {
+            try {
+                await video.play();
+            } catch {
+                elements.viewerNote.textContent = "Buffer ready. Tap play to resume if autoplay is blocked.";
+            }
+        }
+    };
+
+    video.addEventListener("waiting", maybeRebuffer);
+    video.addEventListener("seeking", maybeRebuffer);
 }
 
 function openRenameModal(fileName) {
@@ -920,7 +1285,9 @@ function closeModal(modal) {
     if (!modal) return;
     modal.hidden = true;
     if (modal === elements.renameModal) resetRenameForm();
-    if (![elements.settingsModal, elements.fileInfoModal, elements.statsModal, elements.renameModal].some((entry) => entry && !entry.hidden)) {
+    if (modal === elements.viewerModal) resetViewer();
+    if (modal === elements.fileActionModal) resetFileActions();
+    if (![elements.settingsModal, elements.fileInfoModal, elements.statsModal, elements.viewerModal, elements.fileActionModal, elements.renameModal].some((entry) => entry && !entry.hidden)) {
         document.body.style.overflow = "";
     }
 }
@@ -929,6 +1296,8 @@ function closeAllModals() {
     closeModal(elements.settingsModal);
     closeModal(elements.fileInfoModal);
     closeModal(elements.statsModal);
+    closeModal(elements.viewerModal);
+    closeModal(elements.fileActionModal);
     closeModal(elements.renameModal);
 }
 
@@ -1258,6 +1627,42 @@ function resetRenameForm() {
     elements.renameInput.value = "";
 }
 
+function resetFileActions() {
+    state.actionTarget = null;
+    elements.actionThumb.innerHTML = "";
+    elements.actionName.textContent = "Selected file";
+    elements.actionMeta.textContent = "Choose what you want to do with this media.";
+    elements.actionSelectBtn.textContent = "Select";
+    elements.actionSelectBtn.classList.remove("is-active");
+}
+
+function syncActionSelection(fileName) {
+    const isSelected = state.selectedUploaded.has(fileName);
+    elements.actionSelectBtn.textContent = isSelected ? "Selected" : "Select";
+    elements.actionSelectBtn.classList.toggle("is-active", isSelected);
+}
+
+function resetViewer() {
+    state.viewerTarget = null;
+    state.viewerLoadToken += 1;
+    revokeViewerObjectUrl();
+    applyViewerShellFormat(null);
+    elements.viewerStage.style.removeProperty("--viewer-media-ratio");
+    elements.viewerStage.style.removeProperty("--viewer-media-width");
+    elements.viewerStage.style.removeProperty("--viewer-media-height");
+    elements.viewerStage.innerHTML = "";
+    elements.viewerKindPill.textContent = "File";
+    elements.viewerName.textContent = "Preview";
+    elements.viewerMeta.textContent = "Choose a file to view.";
+    elements.viewerNote.textContent = "Open images and videos at full frame with no crop.";
+}
+
+function revokeViewerObjectUrl() {
+    if (!state.viewerObjectUrl) return;
+    URL.revokeObjectURL(state.viewerObjectUrl);
+    state.viewerObjectUrl = null;
+}
+
 function setButtonLoading(button, isLoading, busyText = "Loading...") {
     if (!button) return;
     if (!button.dataset.defaultText) button.dataset.defaultText = button.textContent;
@@ -1300,6 +1705,12 @@ function formatDuration(seconds) {
 function formatDate(value) {
     const date = new Date(value || 0);
     return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function formatGalleryDate(value) {
+    const date = new Date(value || 0);
+    if (Number.isNaN(date.getTime())) return "Unknown";
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 function escapeHtml(value) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "my-cloud-service-shell-v7";
+const CACHE_NAME = "my-cloud-service-shell-v21";
 const SHELL_ASSETS = [
     "./",
     "./index.html",

@@ -181,7 +181,7 @@
                     </label>
 
                     <div class="toolbar__actions">
-                        <button id="toggleViewBtn" class="button ghost" type="button">List View</button>
+                        <button id="toggleViewBtn" class="button ghost" type="button">Large Tiles</button>
                         <button id="selectVisibleBtn" class="button ghost" type="button">Select Visible</button>
                     </div>
                 </div>
@@ -334,6 +334,65 @@
                 <button class="icon-button" type="button" data-close-modal aria-label="Close statistics">Close</button>
             </div>
             <div id="statsContent" class="modal__body"></div>
+        </div>
+    </section>
+
+    <section id="viewerModal" class="modal media-viewer" hidden aria-labelledby="viewerTitle" aria-modal="true" role="dialog">
+        <div class="modal__backdrop" data-close-modal></div>
+        <div id="viewerPanel" class="modal__panel glass-panel viewer-panel">
+            <button class="icon-button viewer-close" type="button" data-close-modal aria-label="Close media viewer">&times;</button>
+            <div class="modal__header viewer-header">
+                <div>
+                    <span class="eyebrow">Preview</span>
+                    <h2 id="viewerTitle">Media viewer</h2>
+                </div>
+            </div>
+
+            <div class="viewer-layout">
+                <div id="viewerStage" class="viewer-stage" aria-live="polite"></div>
+                <div class="viewer-footer">
+                    <span id="viewerKindPill" class="file-pill">File</span>
+                    <h3 id="viewerName">Preview</h3>
+                    <p id="viewerMeta" class="surface-note">Choose a file to view.</p>
+                    <p id="viewerNote" class="viewer-note">Open images and videos at full frame with no crop.</p>
+                    <div class="viewer-footer__actions">
+                        <button id="viewerShareBtn" class="button ghost compact" type="button">Share</button>
+                        <button id="viewerDownloadBtn" class="button secondary compact" type="button">Download</button>
+                        <button id="viewerInfoBtn" class="button ghost compact" type="button">Info</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="fileActionModal" class="modal action-modal" hidden aria-labelledby="fileActionTitle" aria-modal="true" role="dialog">
+        <div class="modal__backdrop" data-close-modal></div>
+        <div class="modal__panel glass-panel action-panel">
+            <div class="modal__header">
+                <div>
+                    <span class="eyebrow">Media Actions</span>
+                    <h2 id="fileActionTitle">File tools</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-modal aria-label="Close file actions">Close</button>
+            </div>
+
+            <div class="action-panel__summary">
+                <div id="actionThumb" class="action-thumb" aria-hidden="true"></div>
+                <div class="action-summary__copy">
+                    <h3 id="actionName">Selected file</h3>
+                    <p id="actionMeta" class="surface-note">Choose what you want to do with this media.</p>
+                </div>
+            </div>
+
+            <div class="action-grid">
+                <button id="actionPreviewBtn" class="button primary" type="button">Open Preview</button>
+                <button id="actionSelectBtn" class="button ghost" type="button">Select</button>
+                <button id="actionShareBtn" class="button secondary" type="button">Share</button>
+                <button id="actionRenameBtn" class="button ghost" type="button">Rename</button>
+                <button id="actionDownloadBtn" class="button ghost" type="button">Download</button>
+                <button id="actionInfoBtn" class="button ghost" type="button">Info</button>
+                <button id="actionDeleteBtn" class="button danger" type="button">Delete</button>
+            </div>
         </div>
     </section>
 
