@@ -1096,7 +1096,8 @@ function monitorViewerPlaybackBuffer(video, loadToken, fileName) {
         if (rebuffering) return;
         if (loadToken !== state.viewerLoadToken || state.viewerTarget !== fileName) return;
         if (video.ended || video.seeking) return;
-        if (getBufferedAhead(video) >= 10 || !Number.isFinite(video.duration)) return;
+        const requiredBuffer = Math.min(10, video.duration || 10);
+        if (getBufferedAhead(video) >= requiredBuffer || !Number.isFinite(video.duration)) return;
 
         rebuffering = true;
         const shouldResume = !video.paused;
@@ -1104,7 +1105,7 @@ function monitorViewerPlaybackBuffer(video, loadToken, fileName) {
         const frame = elements.viewerStage.querySelector(".viewer-stage__frame");
         if (frame) frame.classList.add("is-rebuffering");
         const range = getBufferedRangeAt(video, video.currentTime);
-        const backwardReady = !!range && range.start <= Math.max(0, video.currentTime - 10) + 0.35;
+        const backwardReady = !!range && range.start <= Math.max(0, video.currentTime - requiredBuffer) + 0.35;
         elements.viewerNote.textContent = backwardReady
             ? "Rebuffering to keep about 10 seconds ahead."
             : "Rebuffering to keep about 10 seconds around the playhead.";
@@ -1112,7 +1113,7 @@ function monitorViewerPlaybackBuffer(video, loadToken, fileName) {
         const ready = await waitForViewerBuffer(video, {
             fileName,
             loadToken,
-            seconds: 10,
+            seconds: requiredBuffer,
             mode: "playback"
         });
 
